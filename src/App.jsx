@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ProvisioningScreen from './components/ProvisioningScreen.jsx';
 import SessionView from './components/SessionView.jsx';
+import BrandHeader from './components/BrandHeader.jsx';
 import { VERTICALS } from './data/verticals.js';
 
 function readQueryParams() {
@@ -22,7 +23,6 @@ export default function App() {
 
   useEffect(() => {
     if (!provisioning) return;
-    // Update URL for shareable links, but don't create a nav entry each time
     const params = new URLSearchParams({
       org: provisioning.orgName,
       industry: provisioning.industry,
@@ -33,17 +33,25 @@ export default function App() {
     window.history.replaceState({}, '', newUrl);
   }, [provisioning]);
 
-  if (!provisioning) {
-    return <ProvisioningScreen onLaunch={setProvisioning} />;
-  }
+  const handleHome = () => {
+    window.history.replaceState({}, '', window.location.pathname);
+    setProvisioning(null);
+  };
 
   return (
-    <SessionView
-      provisioning={provisioning}
-      onChangeProvisioning={() => {
-        window.history.replaceState({}, '', window.location.pathname);
-        setProvisioning(null);
-      }}
-    />
+    <>
+      <BrandHeader
+        onHome={handleHome}
+        subtitle={provisioning ? 'Manager Response' : 'Prototype Setup'}
+      />
+      {!provisioning ? (
+        <ProvisioningScreen onLaunch={setProvisioning} />
+      ) : (
+        <SessionView
+          provisioning={provisioning}
+          onChangeProvisioning={handleHome}
+        />
+      )}
+    </>
   );
 }

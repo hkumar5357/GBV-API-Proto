@@ -15,6 +15,8 @@ export default function ResponseFlow({
   provisioning,
   employeeId,
   onClarificationPick,
+  onEscalateHr,
+  onCopyGuidance,
   isLast,
   onPhaseChange
 }) {
@@ -95,10 +97,15 @@ export default function ResponseFlow({
         <ThreadCards threads={interaction.threads} />
       )}
       {phaseReached('threads') && response.mandatory_reporting && (
-        <MandatoryAlert citations={response.citations} />
+        <MandatoryAlert citations={response.citations} onEscalateHr={onEscalateHr} />
       )}
       {phaseReached('guidance') && (
-        <GuidanceStream text={response.guidance} onDone={handleGuidanceDone} />
+        <GuidanceStream
+          text={response.guidance}
+          onDone={handleGuidanceDone}
+          onCopy={onCopyGuidance}
+          generatedAt={interaction.timestamp}
+        />
       )}
       {phaseReached('clarification') && isLast && (
         <ClarificationQuestions

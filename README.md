@@ -1,4 +1,4 @@
-# UpLevyl · GBV Manager Response Prototype
+# Uplevyl · GBV Manager Response Prototype
 
 A React SPA that helps frontline managers and HR leaders respond to employee disclosures of gender-based violence, stalking, harassment, or domestic violence. The app calls a single backend endpoint and choreographs the response into a progressive, conversational experience.
 

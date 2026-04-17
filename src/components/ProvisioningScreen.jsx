@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { VERTICALS, US_STATES, QUICK_LAUNCH_PROFILES } from '../data/verticals.js';
 
 export default function ProvisioningScreen({ initial, onLaunch }) {
@@ -7,10 +7,11 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
   const [stateVal, setStateVal] = useState(initial?.state || '');
   const [locationId, setLocationId] = useState(initial?.locationId || '');
   const [roles, setRoles] = useState(initial?.roles || []);
+  const [launching, setLaunching] = useState(false);
+  const quickLaunchRef = useRef(null);
 
   const pickIndustry = (id) => {
     setIndustry(id);
-    // auto-populate roles with full default list
     setRoles(VERTICALS[id].roles);
   };
 
@@ -21,31 +22,51 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
   const canLaunch = industry && stateVal;
 
   const launch = () => {
-    if (!canLaunch) return;
-    onLaunch({
-      orgName: orgName || VERTICALS[industry].name + ' Demo',
-      industry,
-      state: stateVal,
-      locationId,
-      roles
-    });
+    if (!canLaunch || launching) return;
+    setLaunching(true);
+    // Small delay so the spinner is visible — feels intentional.
+    setTimeout(() => {
+      onLaunch({
+        orgName: orgName || VERTICALS[industry].name + ' Demo',
+        industry,
+        state: stateVal,
+        locationId,
+        roles
+      });
+      setLaunching(false);
+    }, 300);
   };
 
   const quickLaunch = (profile) => {
-    onLaunch({
-      orgName: profile.orgName,
-      industry: profile.industry,
-      state: profile.state,
-      locationId: profile.locationId,
-      roles: VERTICALS[profile.industry].roles
-    });
+    setLaunching(true);
+    setTimeout(() => {
+      onLaunch({
+        orgName: profile.orgName,
+        industry: profile.industry,
+        state: profile.state,
+        locationId: profile.locationId,
+        roles: VERTICALS[profile.industry].roles
+      });
+      setLaunching(false);
+    }, 200);
+  };
+
+  const scrollToQuickLaunch = () => {
+    quickLaunchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   return (
     <main className="prov">
       <header className="prov__header">
-        <h1>UpLevyl · Prototype Setup</h1>
-        <p className="prov__subtitle">Configure the deployment context for this manager</p>
+        <h1>Uplevyl · Prototype Setup</h1>
+        <p className="prov__subtitle">Configure the deployment context for this manager.</p>
+        <button
+          type="button"
+          className="prov__try-demo"
+          onClick={scrollToQuickLaunch}
+        >
+          ↓ Try a pre-provisioned demo
+        </button>
       </header>
 
       <section className="prov__section">
@@ -62,15 +83,17 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
 
       <section className="prov__section">
         <span className="prov__label">Industry</span>
-        <div className="industry-grid">
+        <div className="industry-grid" role="radiogroup" aria-label="Industry">
           {Object.values(VERTICALS).map(v => (
             <button
               key={v.id}
               type="button"
+              role="radio"
+              aria-checked={industry === v.id}
               className={`industry-card ${industry === v.id ? 'industry-card--selected' : ''}`}
               onClick={() => pickIndustry(v.id)}
             >
-              <div className="industry-card__icon">{v.icon}</div>
+              <div className="industry-card__icon" aria-hidden="true">{v.icon}</div>
               <div className="industry-card__name">{v.name}</div>
               <div className="industry-card__desc">{v.description}</div>
             </button>
@@ -99,7 +122,10 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
 
       {industry && (
         <section className="prov__section">
-          <span className="prov__label">Roles</span>
+          <span className="prov__label">Roles you manage</span>
+          <div className="prov__help">
+            Select the roles you manage — guidance will be customized accordingly.
+          </div>
           <div className="role-grid">
             {VERTICALS[industry].roles.map(role => (
               <label key={role} className="role-check">
@@ -118,33 +144,40 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
       <section className="prov__section">
         <button
           type="button"
-          className="btn btn--primary btn--large"
-          disabled={!canLaunch}
+          className={`btn btn--primary btn--large ${launching ? 'btn--loading' : ''}`}
+          disabled={!canLaunch || launching}
           onClick={launch}
+          aria-label="Launch Manager View"
         >
           Launch Manager View →
         </button>
-        {!canLaunch && (
+        {!canLaunch && !launching && (
           <div className="prov__hint">Select an industry and state to continue.</div>
         )}
       </section>
 
-      <hr className="prov__divider" />
+      <hr className="prov__divider" ref={quickLaunchRef} />
 
       <section className="prov__section">
         <h2 className="prov__h2">Quick Launch</h2>
-        <p className="prov__subtitle">Pre-provisioned deployment profiles</p>
+        <p className="prov__subtitle">Pre-provisioned deployment profiles for quick demos.</p>
         <div className="quick-launch">
           {QUICK_LAUNCH_PROFILES.map(p => {
             const v = VERTICALS[p.industry];
             return (
-              <button key={p.id} type="button" className="quick-card" onClick={() => quickLaunch(p)}>
-                <div className="quick-card__icon">{v.icon}</div>
+              <button
+                key={p.id}
+                type="button"
+                className="quick-card"
+                onClick={() => quickLaunch(p)}
+                disabled={launching}
+              >
+                <div className="quick-card__icon" aria-hidden="true">{v.icon}</div>
                 <div className="quick-card__body">
                   <div className="quick-card__title">{p.display}</div>
                   <div className="quick-card__industry">{v.name}</div>
                 </div>
-                <div className="quick-card__arrow">→</div>
+                <div className="quick-card__arrow" aria-hidden="true">→</div>
               </button>
             );
           })}
