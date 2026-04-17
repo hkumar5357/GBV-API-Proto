@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import ProvisioningScreen from './components/ProvisioningScreen.jsx';
 import SessionView from './components/SessionView.jsx';
 import BrandHeader from './components/BrandHeader.jsx';
+import AppFooter from './components/AppFooter.jsx';
 import { VERTICALS } from './data/verticals.js';
 
 function readQueryParams() {
@@ -39,10 +40,11 @@ export default function App() {
   };
 
   return (
-    <>
+    <div className="shell">
       <BrandHeader
         onHome={handleHome}
-        subtitle={provisioning ? 'Manager Response' : 'Prototype Setup'}
+        pageLabel={provisioning ? 'Manager Response' : 'Prototype Setup'}
+        pageLabelActive={!!provisioning}
       />
       {!provisioning ? (
         <ProvisioningScreen onLaunch={setProvisioning} />
@@ -52,6 +54,7 @@ export default function App() {
           onChangeProvisioning={handleHome}
         />
       )}
-    </>
+      <AppFooter />
+    </div>
   );
 }

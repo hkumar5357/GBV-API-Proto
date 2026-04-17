@@ -1,35 +1,35 @@
 import React, { useState } from 'react';
 
-export default function ClarificationQuestions({ questions, onPick, onFreeText, picked }) {
+/**
+ * Clarification questions appear on the "Next Steps" page. Picking one
+ * creates a follow-up interaction (handled by the parent) — it does NOT
+ * re-execute the full wizard.
+ */
+export default function ClarificationQuestions({ questions, onPick, onFreeText }) {
   const [text, setText] = useState('');
   if (!questions || questions.length === 0) return null;
+
   return (
-    <section className="phase-block">
-      <h2 className="phase-rule">Help me guide you further</h2>
+    <div>
       <div className="clarifications">
-        {questions.map((q, i) => {
-          const isPicked = picked === q;
-          const isDisabled = picked && !isPicked;
-          return (
-            <button
-              key={i}
-              type="button"
-              className={`clarification ${isPicked ? 'clarification--picked' : ''} ${isDisabled ? 'clarification--dim' : ''}`}
-              style={{ animationDelay: `${i * 150}ms` }}
-              disabled={!!picked}
-              onClick={() => onPick(q)}
-            >
-              <span className="clarification__arrow">{isPicked ? '✓' : '→'}</span>
-              <span className="clarification__text">{q}</span>
-            </button>
-          );
-        })}
+        {questions.map((q, i) => (
+          <button
+            key={i}
+            type="button"
+            className="clarification"
+            style={{ animationDelay: `${i * 80}ms` }}
+            onClick={() => onPick(q)}
+          >
+            <span className="clarification__arrow" aria-hidden="true">→</span>
+            <span>{q}</span>
+          </button>
+        ))}
       </div>
       <form
         className="clarification-freetext"
         onSubmit={e => {
           e.preventDefault();
-          if (text.trim() && !picked) {
+          if (text.trim()) {
             onFreeText(text.trim());
             setText('');
           }
@@ -40,12 +40,15 @@ export default function ClarificationQuestions({ questions, onPick, onFreeText, 
           placeholder="Or type a follow-up question"
           value={text}
           onChange={e => setText(e.target.value)}
-          disabled={!!picked}
         />
-        <button type="submit" disabled={!text.trim() || !!picked} className="btn btn--primary">
+        <button
+          type="submit"
+          disabled={!text.trim()}
+          className="btn btn--primary"
+        >
           Ask →
         </button>
       </form>
-    </section>
+    </div>
   );
 }

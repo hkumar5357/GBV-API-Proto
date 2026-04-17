@@ -24,7 +24,6 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
   const launch = () => {
     if (!canLaunch || launching) return;
     setLaunching(true);
-    // Small delay so the spinner is visible — feels intentional.
     setTimeout(() => {
       onLaunch({
         orgName: orgName || VERTICALS[industry].name + ' Demo',
@@ -56,10 +55,13 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
   };
 
   return (
-    <main className="prov">
-      <header className="prov__header">
-        <h1>Uplevyl · Prototype Setup</h1>
-        <p className="prov__subtitle">Configure the deployment context for this manager.</p>
+    <main className="shell__content prov">
+      <header className="prov__hero">
+        <h1>Prototype Setup</h1>
+        <p className="prov__subtitle">
+          Configure the deployment context for this manager. Uplevyl returns jurisdiction-specific,
+          attorney-supervised compliance guidance in seconds.
+        </p>
         <button
           type="button"
           className="prov__try-demo"
@@ -70,8 +72,12 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
       </header>
 
       <section className="prov__section">
+        <div className="prov__section-head">
+          <div className="section-label">1 · Organization</div>
+          <div className="section-desc">Who is this manager working for?</div>
+        </div>
         <label className="prov__field">
-          <span className="prov__label">Organization Name</span>
+          <span className="prov__label">Organization name</span>
           <input
             type="text"
             placeholder="e.g. Walgreens"
@@ -82,9 +88,12 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
       </section>
 
       <section className="prov__section">
-        <span className="prov__label">Industry</span>
+        <div className="prov__section-head">
+          <div className="section-label">2 · Industry</div>
+          <div className="section-desc">Guidance is tailored to industry-specific statutes.</div>
+        </div>
         <div className="industry-grid" role="radiogroup" aria-label="Industry">
-          {Object.values(VERTICALS).map(v => (
+          {Object.values(VERTICALS).map((v, i) => (
             <button
               key={v.id}
               type="button"
@@ -92,6 +101,7 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
               aria-checked={industry === v.id}
               className={`industry-card ${industry === v.id ? 'industry-card--selected' : ''}`}
               onClick={() => pickIndustry(v.id)}
+              style={{ animation: `stagger-in 320ms ease-out ${i * 50}ms both` }}
             >
               <div className="industry-card__icon" aria-hidden="true">{v.icon}</div>
               <div className="industry-card__name">{v.name}</div>
@@ -101,30 +111,38 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
         </div>
       </section>
 
-      <section className="prov__section prov__row">
-        <label className="prov__field">
-          <span className="prov__label">State</span>
-          <select value={stateVal} onChange={e => setStateVal(e.target.value)}>
-            <option value="">Select state…</option>
-            {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </label>
-        <label className="prov__field">
-          <span className="prov__label">Location ID / Store #</span>
-          <input
-            type="text"
-            placeholder="e.g. #4821"
-            value={locationId}
-            onChange={e => setLocationId(e.target.value)}
-          />
-        </label>
+      <section className="prov__section">
+        <div className="prov__section-head">
+          <div className="section-label">3 · Location</div>
+          <div className="section-desc">State drives jurisdiction-specific legal analysis.</div>
+        </div>
+        <div className="prov__row">
+          <label className="prov__field">
+            <span className="prov__label">State</span>
+            <select value={stateVal} onChange={e => setStateVal(e.target.value)} aria-label="State">
+              <option value="">Select state…</option>
+              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <label className="prov__field">
+            <span className="prov__label">Location ID / Store #</span>
+            <input
+              type="text"
+              placeholder="e.g. #4821"
+              value={locationId}
+              onChange={e => setLocationId(e.target.value)}
+            />
+          </label>
+        </div>
       </section>
 
       {industry && (
         <section className="prov__section">
-          <span className="prov__label">Roles you manage</span>
-          <div className="prov__help">
-            Select the roles you manage — guidance will be customized accordingly.
+          <div className="prov__section-head">
+            <div className="section-label">4 · Roles</div>
+            <div className="section-desc">
+              Select the roles you manage — guidance will be customized accordingly.
+            </div>
           </div>
           <div className="role-grid">
             {VERTICALS[industry].roles.map(role => (
@@ -142,27 +160,33 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
       )}
 
       <section className="prov__section">
-        <button
-          type="button"
-          className={`btn btn--primary btn--large ${launching ? 'btn--loading' : ''}`}
-          disabled={!canLaunch || launching}
-          onClick={launch}
-          aria-label="Launch Manager View"
-        >
-          Launch Manager View →
-        </button>
-        {!canLaunch && !launching && (
-          <div className="prov__hint">Select an industry and state to continue.</div>
-        )}
+        <div className="launch-row">
+          <button
+            type="button"
+            className={`btn btn--primary btn--large ${launching ? 'btn--loading' : ''}`}
+            disabled={!canLaunch || launching}
+            onClick={launch}
+            aria-label="Launch Manager View"
+          >
+            Launch Manager View →
+          </button>
+          {!canLaunch && !launching && (
+            <div className="prov__hint">Select an industry and state to continue.</div>
+          )}
+        </div>
       </section>
 
       <hr className="prov__divider" ref={quickLaunchRef} />
 
       <section className="prov__section">
-        <h2 className="prov__h2">Quick Launch</h2>
-        <p className="prov__subtitle">Pre-provisioned deployment profiles for quick demos.</p>
+        <div className="quick-launch-head">
+          <div>
+            <div className="section-label">Quick Launch</div>
+            <div className="section-desc">Pre-provisioned deployment profiles for quick demos.</div>
+          </div>
+        </div>
         <div className="quick-launch">
-          {QUICK_LAUNCH_PROFILES.map(p => {
+          {QUICK_LAUNCH_PROFILES.map((p, i) => {
             const v = VERTICALS[p.industry];
             return (
               <button
@@ -171,6 +195,7 @@ export default function ProvisioningScreen({ initial, onLaunch }) {
                 className="quick-card"
                 onClick={() => quickLaunch(p)}
                 disabled={launching}
+                style={{ animation: `stagger-in 320ms ease-out ${i * 50}ms both` }}
               >
                 <div className="quick-card__icon" aria-hidden="true">{v.icon}</div>
                 <div className="quick-card__body">

@@ -1,0 +1,199 @@
+import React, { useMemo, useState } from 'react';
+import ContextPage from './ContextPage.jsx';
+import GuidancePage from './GuidancePage.jsx';
+import NextStepsPage from './NextStepsPage.jsx';
+import DocumentPage from './DocumentPage.jsx';
+import { buildComplianceRecord, randomId } from '../../utils/documentGenerator.js';
+
+const STEPS = [
+  { num: 1, key: 'context', title: 'Context' },
+  { num: 2, key: 'guidance', title: 'Guidance' },
+  { num: 3, key: 'nextSteps', title: 'Next Steps' },
+  { num: 4, key: 'document', title: 'Document' }
+];
+
+/**
+ * Wizard — 4-page flow for the primary interaction.
+ * The user advances via "Next" buttons. Completed pages are re-navigable
+ * via the progress indicator. Page 4 (Document) can only be reached via
+ * pages 1 → 2 → 3.
+ */
+export default function Wizard({
+  interaction,
+  provisioning,
+  employeeId,
+  onClarificationPick,
+  onEscalateHr,
+  onCopyGuidance,
+  onCopyRecord,
+  onDownloadRecord,
+  onSendToHr,
+  onNewSituation
+}) {
+  const [currentStep, setCurrentStep] = useState(1);
+  const [maxReached, setMaxReached] = useState(1);
+  const [guidanceStreamed, setGuidanceStreamed] = useState(false);
+  const [checkedSteps, setCheckedSteps] = useState([]);
+  const [recordId] = useState(() => randomId('REC', 6));
+
+  const response = interaction.response;
+  if (!response) return null;
+
+  const complianceRecord = useMemo(
+    () => buildComplianceRecord({ interaction, provisioning, employeeId, recordId }),
+    [interaction, provisioning, employeeId, recordId]
+  );
+
+  // Step 2 is "ready to advance" once the stream completes.
+  const canAdvanceFromStep = (step) => {
+    if (step === 2) return guidanceStreamed;
+    return true;
+  };
+
+  const advance = () => {
+    const next = Math.min(currentStep + 1, STEPS.length);
+    setCurrentStep(next);
+    setMaxReached(m => Math.max(m, next));
+    scrollToTop();
+  };
+
+  const goBack = () => {
+    const prev = Math.max(currentStep - 1, 1);
+    setCurrentStep(prev);
+    scrollToTop();
+  };
+
+  const jumpTo = (step) => {
+    if (step <= maxReached) {
+      setCurrentStep(step);
+      scrollToTop();
+    }
+  };
+
+  const scrollToTop = () => {
+    // Smooth scroll to below the navbar so the progress bar is visible
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 10);
+  };
+
+  const toggleStep = (i) => {
+    setCheckedSteps(c => c.includes(i) ? c.filter(x => x !== i) : [...c, i]);
+  };
+
+  const handleStreamDone = () => setGuidanceStreamed(true);
+
+  const renderPage = () => {
+    switch (currentStep) {
+      case 1:
+        return (
+          <ContextPage
+            displayQuery={interaction.displayQuery}
+            response={response}
+            threads={interaction.threads}
+            onEscalateHr={onEscalateHr}
+          />
+        );
+      case 2:
+        return (
+          <GuidancePage
+            response={response}
+            generatedAt={interaction.timestamp}
+            onStreamDone={handleStreamDone}
+            onCopy={onCopyGuidance}
+            autoRestart={!guidanceStreamed}
+          />
+        );
+      case 3:
+        return (
+          <NextStepsPage
+            response={response}
+            checked={checkedSteps}
+            onToggleStep={toggleStep}
+            onClarificationPick={onClarificationPick}
+          />
+        );
+      case 4:
+        return (
+          <DocumentPage
+            record={complianceRecord}
+            onDownload={() => onDownloadRecord(complianceRecord)}
+            onCopy={() => onCopyRecord(complianceRecord)}
+            onSendToHr={onSendToHr}
+            onNewSituation={onNewSituation}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const nextLabels = {
+    1: 'Read Guidance →',
+    2: 'Review Next Steps →',
+    3: 'Generate Document →'
+  };
+
+  const footerHints = {
+    1: 'Review the jurisdiction and issues identified before reading guidance.',
+    2: guidanceStreamed ? 'Guidance is ready.' : 'Guidance is streaming — you can continue when it finishes.',
+    3: 'Mark the steps you\'ve completed, or ask a follow-up.',
+    4: ''
+  };
+
+  const stepState = (step) => {
+    if (step.num === currentStep) return 'active';
+    if (step.num <= maxReached) return 'done';
+    return 'pending';
+  };
+
+  return (
+    <div className="wizard">
+      <nav className="wizard__progress" aria-label="Progress">
+        {STEPS.map(step => {
+          const state = stepState(step);
+          const clickable = step.num <= maxReached;
+          return (
+            <button
+              key={step.num}
+              type="button"
+              className={`wizard-step wizard-step--${state}`}
+              onClick={() => clickable && jumpTo(step.num)}
+              disabled={!clickable}
+              aria-current={state === 'active' ? 'step' : undefined}
+            >
+              <div className="wizard-step__num">
+                Step {step.num} / {STEPS.length}
+                {state === 'done' && <span className="wizard-step__check" aria-label="Completed">✓</span>}
+              </div>
+              <div className="wizard-step__title">{step.title}</div>
+            </button>
+          );
+        })}
+      </nav>
+
+      {renderPage()}
+
+      {currentStep < STEPS.length && (
+        <div className="wizard__footer">
+          <div className="wizard__footer-hint">{footerHints[currentStep]}</div>
+          <div className="wizard__footer-actions">
+            {currentStep > 1 && (
+              <button type="button" className="btn btn--ghost" onClick={goBack}>
+                ← Back
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={advance}
+              disabled={!canAdvanceFromStep(currentStep)}
+            >
+              {nextLabels[currentStep]}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

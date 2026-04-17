@@ -3,16 +3,25 @@ import LocationBadge from './LocationBadge.jsx';
 import EmployeeIdInput from './EmployeeIdInput.jsx';
 import ScenarioCards from './ScenarioCards.jsx';
 import ProcessingState from './ProcessingState.jsx';
-import ResponseFlow from './ResponseFlow.jsx';
 import AuditTrail from './AuditTrail.jsx';
-import SessionComplete from './SessionComplete.jsx';
 import Toast from './Toast.jsx';
+import BackRow from './BackRow.jsx';
+import Wizard from './wizard/Wizard.jsx';
+import FollowUpBubble from './FollowUpBubble.jsx';
 import { VERTICALS } from '../data/verticals.js';
 import { askApi, composeQuery } from '../utils/api.js';
 import { detectThreads } from '../utils/threadDetection.js';
-import { randomId } from '../utils/documentGenerator.js';
+import { randomId, formatComplianceRecordText } from '../utils/documentGenerator.js';
+import { openPrintableRecord } from '../utils/printRecord.js';
 
 const MAX_INPUT = 1000;
+
+const emptySession = () => ({
+  id: randomId('SES', 6),
+  startTime: new Date().toISOString(),
+  primary: null,        // { id, query, displayQuery, timestamp, response, threads, mock, kind: 'primary' }
+  followups: []         // Array of { id, query, displayQuery, timestamp, response, threads, mock, kind: 'follow-up' }
+});
 
 export default function SessionView({ provisioning, onChangeProvisioning }) {
   const vertical = VERTICALS[provisioning.industry];
@@ -20,29 +29,19 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
   const [input, setInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
-  const [session, setSession] = useState(() => ({
-    id: randomId('SES', 6),
-    startTime: new Date().toISOString(),
-    interactions: []
-  }));
-  const [sessionComplete, setSessionComplete] = useState(false);
-  const latestRef = useRef(null);
+  const [session, setSession] = useState(emptySession);
+  const [composeText, setComposeText] = useState('');
   const textareaRef = useRef(null);
-
-  useEffect(() => {
-    if (latestRef.current) {
-      latestRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [session.interactions.length]);
+  const followupsEndRef = useRef(null);
 
   const showToast = (message, variant = 'success', ms = 2200) => {
     setToast({ message, variant });
     setTimeout(() => setToast(null), ms);
   };
 
-  const submitQuery = async (userInput, { followUp = false } = {}) => {
+  // Submit an initial (primary) disclosure — drives the 4-page wizard.
+  const submitPrimary = async (userInput) => {
     if (!userInput.trim()) return;
-    setSessionComplete(false);
     setSubmitting(true);
 
     const composed = composeQuery({
@@ -52,9 +51,8 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
       orgName: provisioning.orgName,
       locationId: provisioning.locationId,
       employeeId,
-      followUp
+      followUp: false
     });
-
     const interactionId = randomId('INT', 5);
     const pending = {
       id: interactionId,
@@ -63,10 +61,10 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
       timestamp: new Date().toISOString(),
       response: null,
       threads: [],
-      phase: 'processing',
-      mock: false
+      mock: false,
+      kind: 'primary'
     };
-    setSession(s => ({ ...s, interactions: [...s.interactions, pending] }));
+    setSession(s => ({ ...s, primary: pending, followups: [] }));
 
     const { data, mock } = await askApi({
       userInput,
@@ -80,49 +78,99 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
         employeeId
       }
     });
-
     const threads = detectThreads(data);
-
     setSession(s => ({
       ...s,
-      interactions: s.interactions.map(it =>
-        it.id === interactionId
-          ? { ...it, response: data, threads, phase: 'jurisdiction', mock }
-          : it
-      )
+      primary: {
+        ...s.primary,
+        response: data,
+        threads,
+        mock
+      }
     }));
     setSubmitting(false);
   };
 
+  // Submit a follow-up — renders as a conversational bubble, not a new wizard.
+  const submitFollowUp = async (userInput) => {
+    if (!userInput.trim()) return;
+    const composed = composeQuery({
+      userInput,
+      industry: vertical.name,
+      state: provisioning.state,
+      orgName: provisioning.orgName,
+      locationId: provisioning.locationId,
+      employeeId,
+      followUp: true
+    });
+    const interactionId = randomId('INT', 5);
+    const pending = {
+      id: interactionId,
+      query: composed,
+      displayQuery: userInput,
+      timestamp: new Date().toISOString(),
+      response: null,
+      threads: [],
+      mock: false,
+      kind: 'follow-up'
+    };
+    setSession(s => ({ ...s, followups: [...s.followups, pending] }));
+
+    const { data, mock } = await askApi({
+      userInput,
+      composedQuery: composed,
+      persona: 'Manager Guidance',
+      context: {
+        industry: vertical.id,
+        state: provisioning.state,
+        orgName: provisioning.orgName,
+        locationId: provisioning.locationId,
+        employeeId
+      }
+    });
+    setSession(s => ({
+      ...s,
+      followups: s.followups.map(f =>
+        f.id === interactionId ? { ...f, response: data, mock } : f
+      )
+    }));
+  };
+
+  // Auto-scroll to newest follow-up
+  useEffect(() => {
+    if (session.followups.length > 0) {
+      setTimeout(() => {
+        followupsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 50);
+    }
+  }, [session.followups.length]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    submitQuery(input);
+    submitPrimary(input);
     setInput('');
   };
 
   const handleScenario = (scenario) => {
-    setInput(scenario.text);
-    submitQuery(scenario.text);
+    submitPrimary(scenario.text);
     setInput('');
   };
 
   const handleClarificationPick = (question) => {
-    submitQuery(question, { followUp: true });
+    submitFollowUp(question);
   };
 
-  const handleFollowUp = (text) => {
-    submitQuery(text, { followUp: true });
+  const handleFollowupCompose = (text) => {
+    submitFollowUp(text);
   };
 
   const handleNewSituation = () => {
-    setSession({
-      id: randomId('SES', 6),
-      startTime: new Date().toISOString(),
-      interactions: []
-    });
-    setSessionComplete(false);
+    setSession(emptySession());
     setInput('');
-    setTimeout(() => textareaRef.current?.focus(), 50);
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      textareaRef.current?.focus();
+    }, 50);
   };
 
   const handleEscalateHr = () => {
@@ -138,148 +186,179 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
     }
   };
 
-  const handlePhaseChange = (phase) => {
-    if (phase === 'complete') setSessionComplete(true);
+  const handleCopyRecord = async (record) => {
+    try {
+      await navigator.clipboard.writeText(formatComplianceRecordText(record));
+      showToast('Record copied to clipboard', 'success');
+    } catch {
+      showToast('Unable to copy — use browser copy instead', 'warning');
+    }
   };
 
-  const anyMock = session.interactions.some(it => it.mock);
-  const hasInteractions = session.interactions.length > 0;
+  const handleDownloadRecord = (record) => {
+    openPrintableRecord(record);
+  };
+
+  const handleSendToHr = () => {
+    showToast('Record sent to HR (demo mode)', 'info');
+  };
+
+  const hasPrimary = !!session.primary;
+  const primaryReady = hasPrimary && !!session.primary.response;
+  const anyMock = (session.primary?.mock) || session.followups.some(f => f.mock);
   const employeeIdVariant = provisioning.industry === 'corporate' ? 'prominent' : 'compact';
-  const inputLen = input.length;
-  const canSubmit = input.trim().length > 0 && !submitting;
 
   return (
-    <main className="session" aria-live="polite">
-      <div className="session__topbar">
-        <LocationBadge
-          provisioning={provisioning}
-          onChange={onChangeProvisioning}
-        />
-        <div className="session__topbar-actions">
-          {hasInteractions && (
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={handleNewSituation}
-              aria-label="Start a new situation"
-            >
-              ← New Situation
-            </button>
-          )}
-          {anyMock && (
-            <div className="mock-indicator" role="status">⚡ Demo mode — using sample data</div>
-          )}
-        </div>
-      </div>
-
-      {/* Entry / initial view */}
-      {!hasInteractions && (
-        <section className="entry">
-          <EmployeeIdInput
-            value={employeeId}
-            onChange={setEmployeeId}
-            variant={employeeIdVariant}
+    <>
+      <BackRow
+        label={hasPrimary ? '← New Situation' : '← Back to Setup'}
+        onClick={hasPrimary ? handleNewSituation : onChangeProvisioning}
+        ariaLabel={hasPrimary ? 'Start a new situation' : 'Back to setup'}
+      />
+      <main className="shell__content session">
+        <div className="session__topbar">
+          <LocationBadge
+            provisioning={provisioning}
+            onChange={onChangeProvisioning}
           />
-          <h1 className="entry__prompt">Tell me what&apos;s happening.</h1>
-          <form className="entry__form" onSubmit={handleSubmit}>
-            <label htmlFor="situation-input" className="visually-hidden">
-              Describe the situation
-            </label>
-            <textarea
-              id="situation-input"
-              ref={textareaRef}
-              rows={5}
-              maxLength={MAX_INPUT}
-              placeholder="Describe the situation — what happened, who is involved, what state you're in"
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              aria-describedby="situation-hint"
+          <div className="session__topbar-actions">
+            {anyMock && (
+              <div className="mock-indicator" role="status">⚡ Demo mode — using sample data</div>
+            )}
+          </div>
+        </div>
+
+        {/* Entry */}
+        {!hasPrimary && (
+          <section className="entry">
+            <EmployeeIdInput
+              value={employeeId}
+              onChange={setEmployeeId}
+              variant={employeeIdVariant}
             />
-            <div id="situation-hint" className="entry__hint">
-              <span>Include details like: what happened, who is involved, any safety concerns.</span>
-              <span className="entry__counter">{inputLen} / {MAX_INPUT}</span>
-            </div>
+            <h1 className="entry__prompt">Tell me what&apos;s happening.</h1>
+            <form className="entry__form" onSubmit={handleSubmit}>
+              <label htmlFor="situation-input" className="visually-hidden">
+                Describe the situation
+              </label>
+              <textarea
+                id="situation-input"
+                ref={textareaRef}
+                rows={5}
+                maxLength={MAX_INPUT}
+                placeholder="Describe the situation — what happened, who is involved, any details you know."
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                aria-describedby="situation-hint"
+              />
+              <div id="situation-hint" className="entry__hint">
+                <span>Include details like: what happened, who is involved, any safety concerns.</span>
+                <span className="entry__counter">{input.length} / {MAX_INPUT}</span>
+              </div>
+              <button
+                type="submit"
+                className={`btn btn--primary btn--large ${submitting ? 'btn--loading' : ''}`}
+                disabled={!input.trim() || submitting}
+                aria-label="Get guidance"
+              >
+                Get Guidance →
+              </button>
+            </form>
+            <ScenarioCards
+              scenarios={vertical.scenarios}
+              label={vertical.scenarioLabel}
+              onPick={handleScenario}
+            />
+          </section>
+        )}
+
+        {/* Primary interaction — wizard or processing */}
+        {hasPrimary && !primaryReady && (
+          <ProcessingState query={session.primary.displayQuery} apiDone={false} />
+        )}
+
+        {hasPrimary && primaryReady && (
+          <Wizard
+            interaction={session.primary}
+            provisioning={provisioning}
+            employeeId={employeeId}
+            onClarificationPick={handleClarificationPick}
+            onEscalateHr={handleEscalateHr}
+            onCopyGuidance={handleCopyGuidance}
+            onCopyRecord={handleCopyRecord}
+            onDownloadRecord={handleDownloadRecord}
+            onSendToHr={handleSendToHr}
+            onNewSituation={handleNewSituation}
+          />
+        )}
+
+        {/* Follow-ups — conversational bubbles beneath the wizard */}
+        {primaryReady && session.followups.length > 0 && (
+          <section className="followups" aria-label="Follow-up questions">
+            <div className="followups__label">Follow-ups</div>
+            {session.followups.map(f => (
+              <FollowUpBubble key={f.id} interaction={f} />
+            ))}
+            <div ref={followupsEndRef}></div>
+          </section>
+        )}
+
+        {/* Persistent follow-up composer once the primary is ready */}
+        {primaryReady && (
+          <form
+            className="followup-composer"
+            onSubmit={e => {
+              e.preventDefault();
+              if (composeText.trim()) {
+                handleFollowupCompose(composeText.trim());
+                setComposeText('');
+              }
+            }}
+          >
+            <textarea
+              rows={1}
+              placeholder="Ask a follow-up..."
+              value={composeText}
+              onChange={e => setComposeText(e.target.value)}
+              aria-label="Ask a follow-up question"
+            />
             <button
               type="submit"
-              className={`btn btn--primary btn--large ${submitting ? 'btn--loading' : ''}`}
-              disabled={!canSubmit}
-              title={!input.trim() ? 'Describe a situation to get guidance.' : undefined}
-              aria-label="Get guidance"
+              className="btn btn--primary"
+              disabled={!composeText.trim()}
             >
-              Get Guidance →
+              Ask →
             </button>
           </form>
-          <ScenarioCards
-            scenarios={vertical.scenarios}
-            label={vertical.scenarioLabel}
-            onPick={handleScenario}
-          />
-        </section>
-      )}
+        )}
 
-      {/* Interactions */}
-      {hasInteractions && (
-        <section className="interactions" aria-live="polite">
-          {session.interactions.map((it, idx) => {
-            const isLast = idx === session.interactions.length - 1;
-            const ref = isLast ? latestRef : null;
-            return (
-              <article key={it.id} ref={ref} className="interaction">
-                <div className="interaction__label">
-                  {idx === 0 ? 'Initial disclosure' : `Follow-up ${idx}`}
-                </div>
-                {!it.response && (
-                  <ProcessingState query={it.displayQuery} apiDone={false} />
-                )}
-                {it.response && (
-                  <>
-                    <ProcessingState query={it.displayQuery} apiDone={true} />
-                    <ResponseFlow
-                      interaction={it}
-                      provisioning={provisioning}
-                      employeeId={employeeId}
-                      onClarificationPick={handleClarificationPick}
-                      onEscalateHr={handleEscalateHr}
-                      onCopyGuidance={handleCopyGuidance}
-                      isLast={isLast}
-                      onPhaseChange={handlePhaseChange}
-                    />
-                  </>
-                )}
-              </article>
-            );
-          })}
-
-          {sessionComplete && (
-            <>
-              <SessionComplete
-                onFollowUp={handleFollowUp}
-                onNewSession={handleNewSituation}
-              />
-              <AuditTrail session={session} provisioning={provisioning} />
-            </>
-          )}
-
-          <div style={{ marginTop: 32, textAlign: 'center' }}>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={handleNewSituation}
-            >
-              Ask about another situation
-            </button>
+        {/* Audit drawer */}
+        {primaryReady && (
+          <div className="audit-drawer">
+            <AuditTrail session={sessionToAuditShape(session)} provisioning={provisioning} />
           </div>
-        </section>
-      )}
-
-      <footer className="disclaimer">
-        <div>⚖️ Attorney-supervised · No PII collected · All interactions anonymously logged</div>
-        <div className="disclaimer__powered">
-          Powered by <a href="https://uplevyl.com" target="_blank" rel="noreferrer">Uplevyl</a>
-        </div>
-      </footer>
+        )}
+      </main>
 
       {toast && <Toast message={toast.message} variant={toast.variant} />}
-    </main>
+    </>
   );
+}
+
+/**
+ * Flatten session.primary + followups into the shape AuditTrail expects
+ * (a simple `interactions[]` array).
+ */
+function sessionToAuditShape(session) {
+  const interactions = [];
+  if (session.primary && session.primary.response) interactions.push(session.primary);
+  for (const f of session.followups) {
+    if (f.response) interactions.push(f);
+  }
+  return {
+    id: session.id,
+    startTime: session.startTime,
+    interactions,
+    employeeId: session.employeeId
+  };
 }
