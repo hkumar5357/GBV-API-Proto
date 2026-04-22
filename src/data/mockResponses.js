@@ -574,35 +574,75 @@ export const MOCK_RESPONSES = [
   }
 ];
 
-export function findMockResponse(userInput) {
+/**
+ * findMockResponse accepts the user's free text, plus (optionally) structured
+ * state/industry hints from the deployment context. When the text matches a
+ * scenario, that scenario response is returned. When it doesn't, we still try
+ * to produce a state-aware response by templating from another scenario in
+ * the same state, so the downstream jurisdiction and next_steps remain
+ * relevant rather than falling through to "General Guidance".
+ */
+export function findMockResponse(userInput, { state, industry } = {}) {
   const input = (userInput || '').toLowerCase();
   for (const entry of MOCK_RESPONSES) {
     if (input.includes(entry.match.toLowerCase())) {
       return { ...entry.response, search_latency: 0.9 + Math.random() * 0.9 };
     }
   }
-  // Default generic fallback
+
+  // State-aware fallback: pick a mock from the same state if one exists.
+  if (state) {
+    const stateMatch = MOCK_RESPONSES.find(
+      e => (e.response.jurisdiction || '').toLowerCase() === String(state).toLowerCase()
+    );
+    if (stateMatch) {
+      return {
+        ...stateMatch.response,
+        // Replace the narrative with a more generic state-aware version so
+        // we don't repeat the specific scenario language verbatim, but keep
+        // the state-accurate citations and next_steps scaffolding.
+        guidance: buildStateAwareGuidance(state, industry),
+        clarification_questions: [
+          'Is the employee requesting a specific accommodation?',
+          `Does the employee want to involve ${state} law enforcement?`,
+          'Has the employee provided a protection order or incident report?'
+        ],
+        search_latency: 0.9 + Math.random() * 0.9
+      };
+    }
+  }
+
+  // Last resort: a general fallback, but if we know a state, use it.
   return base({
-    jurisdiction: 'General Guidance',
-    guidance: "Thank you for bringing this forward. Based on the information you've shared, there are several things to consider. First, ensure the employee's immediate physical safety — if there is any imminent threat, contact law enforcement and your security team. Second, document the disclosure privately, capturing date, time, and a factual summary. Third, offer reasonable accommodations such as schedule changes, a private workspace, or time off. Fourth, loop in HR only on a need-to-know basis and keep disclosures in a confidential file separate from personnel records. Finally, share resources like your EAP and the National Domestic Violence Hotline (1-800-799-7233). Specific legal obligations depend on the jurisdiction — confirming the state will sharpen this guidance.",
+    jurisdiction: state || 'General Guidance',
+    guidance: buildStateAwareGuidance(state, industry),
     citations: [
       { statute: 'OSHA General Duty Clause', description: 'Employer duty to provide a safe workplace' }
     ],
     clarification_questions: [
-      'What state is the workplace in?',
+      state ? `Which specific ${state} statute should we cite?` : 'What state is the workplace in?',
       'Is the employee requesting a specific accommodation?',
       'Is there any indication of imminent threat?'
     ],
     next_steps: [
-      'Document the disclosure privately',
-      'Offer a confidential private conversation',
-      'Share EAP and DV hotline resources',
-      'Coordinate with HR only on a need-to-know basis',
-      'Revisit once the jurisdiction is confirmed'
+      'Document the disclosure privately (date, time, factual summary)',
+      'Offer a confidential private conversation away from the floor',
+      'Share EAP and DV hotline resources (1-800-799-7233)',
+      state
+        ? `Confirm any ${state}-specific protected leave and accommodation entitlements`
+        : 'Coordinate with HR only on a need-to-know basis',
+      'Schedule a follow-up check-in within one week'
     ],
     sources: [
-      { title: 'OSHA Workplace Violence Resources', source_url: 'https://www.osha.gov/workplace-violence' }
+      { title: 'OSHA Workplace Violence Resources', source_url: 'https://www.osha.gov/workplace-violence' },
+      { title: 'National Domestic Violence Hotline', source_url: 'https://www.thehotline.org/' }
     ],
     mandatory_reporting: false
   });
+}
+
+function buildStateAwareGuidance(state, industry) {
+  const stateLabel = state || 'your state';
+  const industryLabel = industry || 'workplace';
+  return `Thank you for bringing this forward. Based on the information you've shared and the ${industryLabel} context in ${stateLabel}, here are the immediate priorities. First, ensure the employee's physical safety — if there is any imminent threat, contact law enforcement and your security team now. Second, document the disclosure privately, capturing date, time, location, and a factual summary (no speculation). Third, offer reasonable accommodations such as a schedule change, a new work phone or workstation, or protected leave — ${stateLabel} statute may require an interactive-process conversation. Fourth, loop in HR only on a need-to-know basis and keep the disclosure in a confidential file separate from the personnel record. Finally, share resources including your EAP and the National Domestic Violence Hotline (1-800-799-7233). If a protection order is in place, request a copy for security. If the employee declines any specific accommodation, document the offer and the decline. ${stateLabel}-specific protected-leave rules and accommodation obligations apply — review them with HR or legal before closing the matter.`;
 }

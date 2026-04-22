@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import LocationBadge from './LocationBadge.jsx';
 import EmployeeIdInput from './EmployeeIdInput.jsx';
 import ScenarioCards from './ScenarioCards.jsx';
 import ProcessingState from './ProcessingState.jsx';
-import AuditTrail from './AuditTrail.jsx';
+import AuditTimeline from './AuditTimeline.jsx';
 import Toast from './Toast.jsx';
 import BackRow from './BackRow.jsx';
+import EmailToHrModal from './EmailToHrModal.jsx';
 import Wizard from './wizard/Wizard.jsx';
 import FollowUpBubble from './FollowUpBubble.jsx';
 import { VERTICALS } from '../data/verticals.js';
@@ -13,14 +14,16 @@ import { askApi, composeQuery } from '../utils/api.js';
 import { detectThreads } from '../utils/threadDetection.js';
 import { randomId, formatComplianceRecordText } from '../utils/documentGenerator.js';
 import { openPrintableRecord } from '../utils/printRecord.js';
+import { EVENT_TYPES, createEvent } from '../utils/auditEvents.js';
 
 const MAX_INPUT = 1000;
 
 const emptySession = () => ({
   id: randomId('SES', 6),
   startTime: new Date().toISOString(),
-  primary: null,        // { id, query, displayQuery, timestamp, response, threads, mock, kind: 'primary' }
-  followups: []         // Array of { id, query, displayQuery, timestamp, response, threads, mock, kind: 'follow-up' }
+  primary: null,
+  followups: [],
+  events: []
 });
 
 export default function SessionView({ provisioning, onChangeProvisioning }) {
@@ -31,6 +34,7 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
   const [toast, setToast] = useState(null);
   const [session, setSession] = useState(emptySession);
   const [composeText, setComposeText] = useState('');
+  const [emailModalRecord, setEmailModalRecord] = useState(null);
   const textareaRef = useRef(null);
   const followupsEndRef = useRef(null);
 
@@ -39,10 +43,47 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
     setTimeout(() => setToast(null), ms);
   };
 
+  // Append an event to the session's audit timeline.
+  const addEvent = useCallback((type, description, metadata = {}) => {
+    setSession(s => ({
+      ...s,
+      events: [...s.events, createEvent(type, description, metadata)]
+    }));
+  }, []);
+
+  // Seed session_started + context_set events on mount.
+  useEffect(() => {
+    const contextLabel = `${vertical.name} · ${provisioning.state}${provisioning.locationId ? ' · ' + provisioning.locationId : ''}`;
+    setSession(s => {
+      if (s.events.length > 0) return s;
+      return {
+        ...s,
+        events: [
+          createEvent(EVENT_TYPES.SESSION_STARTED, 'Manager opened Uplevyl response tool.'),
+          createEvent(EVENT_TYPES.CONTEXT_SET, `Deployment context set: ${provisioning.orgName} · ${contextLabel}.`, {
+            org: provisioning.orgName,
+            industry: vertical.name,
+            state: provisioning.state,
+            location: provisioning.locationId || null
+          })
+        ]
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Submit an initial (primary) disclosure — drives the 4-page wizard.
-  const submitPrimary = async (userInput) => {
+  const submitPrimary = async (userInput, { scenarioTag = null } = {}) => {
     if (!userInput.trim()) return;
     setSubmitting(true);
+
+    addEvent(
+      EVENT_TYPES.SCENARIO_SUBMITTED,
+      scenarioTag
+        ? `Scenario submitted (${scenarioTag}): "${truncate(userInput, 180)}"`
+        : `Scenario submitted: "${truncate(userInput, 180)}"`,
+      { text: userInput, scenarioTag }
+    );
 
     const composed = composeQuery({
       userInput,
@@ -79,21 +120,45 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
       }
     });
     const threads = detectThreads(data);
+
     setSession(s => ({
       ...s,
-      primary: {
-        ...s.primary,
-        response: data,
-        threads,
-        mock
-      }
+      primary: { ...s.primary, response: data, threads, mock }
     }));
+
+    // Emit events from the response
+    addEvent(
+      EVENT_TYPES.GUIDANCE_GENERATED,
+      `Guidance generated · jurisdiction: ${data.jurisdiction || 'General'}.`,
+      { jurisdiction: data.jurisdiction }
+    );
+    if (threads && threads.length > 0) {
+      addEvent(
+        EVENT_TYPES.ISSUES_IDENTIFIED,
+        `${threads.length} issue${threads.length === 1 ? '' : 's'} identified: ${threads.map(t => `${t.label} (${t.priority})`).join(', ')}.`,
+        { threads: threads.map(t => ({ label: t.label, priority: t.priority })) }
+      );
+    }
+    if (data.mandatory_reporting) {
+      addEvent(
+        EVENT_TYPES.MANDATORY_TRIGGERED,
+        'Mandatory reporting flagged — HR/legal escalation recommended.',
+        {}
+      );
+    }
     setSubmitting(false);
   };
 
   // Submit a follow-up — renders as a conversational bubble, not a new wizard.
   const submitFollowUp = async (userInput) => {
     if (!userInput.trim()) return;
+
+    addEvent(
+      EVENT_TYPES.FOLLOWUP_ASKED,
+      `Follow-up asked: "${truncate(userInput, 180)}"`,
+      { text: userInput }
+    );
+
     const composed = composeQuery({
       userInput,
       industry: vertical.name,
@@ -152,20 +217,20 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
   };
 
   const handleScenario = (scenario) => {
-    submitPrimary(scenario.text);
+    submitPrimary(scenario.text, { scenarioTag: scenario.tag });
     setInput('');
   };
 
-  const handleClarificationPick = (question) => {
-    submitFollowUp(question);
-  };
-
-  const handleFollowupCompose = (text) => {
-    submitFollowUp(text);
-  };
+  const handleClarificationPick = (question) => submitFollowUp(question);
+  const handleFollowupCompose = (text) => submitFollowUp(text);
 
   const handleNewSituation = () => {
-    setSession(emptySession());
+    const fresh = emptySession();
+    fresh.events = [
+      createEvent(EVENT_TYPES.SESSION_STARTED, 'Manager started a new situation.'),
+      createEvent(EVENT_TYPES.CONTEXT_SET, `Deployment context reused: ${provisioning.orgName}.`)
+    ];
+    setSession(fresh);
     setInput('');
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -197,11 +262,54 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
 
   const handleDownloadRecord = (record) => {
     openPrintableRecord(record);
+    addEvent(
+      EVENT_TYPES.DOCUMENT_EXPORTED,
+      `Compliance record exported as PDF · ${record.recordId}.`,
+      { recordId: record.recordId }
+    );
   };
 
-  const handleSendToHr = () => {
+  const handleOpenEmailModal = (record) => {
+    setEmailModalRecord(record);
+  };
+
+  const handleConfirmEmail = (record) => {
+    addEvent(
+      EVENT_TYPES.DOCUMENT_EMAILED,
+      `Compliance record emailed to HR (demo mode) · ${record.recordId}.`,
+      { recordId: record.recordId }
+    );
+    setEmailModalRecord(null);
     showToast('Record sent to HR (demo mode)', 'info');
   };
+
+  const handleDocumentGenerated = useCallback((record) => {
+    // Emit only the first time page 4 is reached for a given record.
+    setSession(s => {
+      if (s.events.some(e => e.type === EVENT_TYPES.DOCUMENT_GENERATED && e.metadata?.recordId === record.recordId)) {
+        return s;
+      }
+      return {
+        ...s,
+        events: [
+          ...s.events,
+          createEvent(
+            EVENT_TYPES.DOCUMENT_GENERATED,
+            `Compliance record generated · ${record.recordId}.`,
+            { recordId: record.recordId }
+          )
+        ]
+      };
+    });
+  }, []);
+
+  const handleStepCompleted = useCallback((index, description) => {
+    addEvent(
+      EVENT_TYPES.STEP_COMPLETED,
+      `Next step ${index + 1} marked complete: "${truncate(description, 140)}"`,
+      { index, description }
+    );
+  }, [addEvent]);
 
   const hasPrimary = !!session.primary;
   const primaryReady = hasPrimary && !!session.primary.response;
@@ -282,13 +390,18 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
             interaction={session.primary}
             provisioning={provisioning}
             employeeId={employeeId}
+            events={session.events}
+            session={session}
+            followups={session.followups}
             onClarificationPick={handleClarificationPick}
             onEscalateHr={handleEscalateHr}
             onCopyGuidance={handleCopyGuidance}
             onCopyRecord={handleCopyRecord}
             onDownloadRecord={handleDownloadRecord}
-            onSendToHr={handleSendToHr}
+            onSendToHr={handleOpenEmailModal}
             onNewSituation={handleNewSituation}
+            onStepCompleted={handleStepCompleted}
+            onDocumentGenerated={handleDocumentGenerated}
           />
         )}
 
@@ -335,30 +448,32 @@ export default function SessionView({ provisioning, onChangeProvisioning }) {
         {/* Audit drawer */}
         {primaryReady && (
           <div className="audit-drawer">
-            <AuditTrail session={sessionToAuditShape(session)} provisioning={provisioning} />
+            <AuditTimeline
+              events={session.events}
+              session={session}
+              provisioning={provisioning}
+              employeeId={employeeId}
+              collapsible={true}
+            />
           </div>
         )}
       </main>
 
       {toast && <Toast message={toast.message} variant={toast.variant} />}
+
+      {emailModalRecord && (
+        <EmailToHrModal
+          record={emailModalRecord}
+          provisioning={provisioning}
+          onCancel={() => setEmailModalRecord(null)}
+          onConfirm={() => handleConfirmEmail(emailModalRecord)}
+        />
+      )}
     </>
   );
 }
 
-/**
- * Flatten session.primary + followups into the shape AuditTrail expects
- * (a simple `interactions[]` array).
- */
-function sessionToAuditShape(session) {
-  const interactions = [];
-  if (session.primary && session.primary.response) interactions.push(session.primary);
-  for (const f of session.followups) {
-    if (f.response) interactions.push(f);
-  }
-  return {
-    id: session.id,
-    startTime: session.startTime,
-    interactions,
-    employeeId: session.employeeId
-  };
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }

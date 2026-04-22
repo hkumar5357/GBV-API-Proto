@@ -5,8 +5,8 @@ export default function DocumentPage({
   record,
   onDownload,
   onCopy,
-  onNewSituation,
-  onSendToHr
+  onSendToHr,
+  onNewSituation
 }) {
   return (
     <div className="wizard__page" aria-labelledby="page-document-title">
@@ -15,24 +15,25 @@ export default function DocumentPage({
           <h2 id="page-document-title" className="wizard__section-title">Compliance record</h2>
         </div>
         <div className="compliance-intro">
-          ✓ Your session is documented. Download the record as a PDF or copy it to your clipboard.
+          ✓ Session documented. Download the record as a PDF, send it to HR,
+          or copy the full text to your clipboard.
         </div>
-        <ComplianceDocument
-          record={record}
-          onDownload={onDownload}
-          onCopy={onCopy}
-          onSendToHr={onSendToHr}
-        />
+        <ComplianceDocument record={record} />
       </div>
 
-      <div className="session-complete">
-        <div className="session-complete__done">✅ All issues addressed.</div>
-        <div className="session-complete__actions">
-          <button className="btn btn--primary" onClick={onDownload}>📥 Download PDF</button>
-          <button className="btn btn--ghost" onClick={onCopy}>📋 Copy Record</button>
-          <button className="btn btn--ghost" onClick={onSendToHr}>📧 Send to HR</button>
-          <button className="btn btn--ghost" onClick={onNewSituation}>← Start New Situation</button>
-        </div>
+      <div className="compliance-actions">
+        <button className="btn btn--primary" onClick={onDownload}>
+          📥 Download PDF
+        </button>
+        <button className="btn btn--ghost" onClick={onSendToHr}>
+          📧 Email to HR
+        </button>
+        <button className="btn btn--ghost" onClick={onCopy}>
+          📋 Copy Record
+        </button>
+        <button className="btn btn--ghost" onClick={onNewSituation}>
+          ← Start New Situation
+        </button>
       </div>
     </div>
   );

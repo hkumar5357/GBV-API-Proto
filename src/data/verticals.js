@@ -175,48 +175,48 @@ export const VERTICALS = {
 
 export const QUICK_LAUNCH_PROFILES = [
   {
-    id: 'walgreens',
-    orgName: 'Walgreens',
+    id: 'retail-demo',
+    orgName: 'National Pharmacy Chain',
     industry: 'retail',
     state: 'California',
-    locationId: '#4821',
+    locationId: 'Store #4821',
     city: 'Fresno',
-    display: 'Walgreens #4821 · Fresno, CA'
+    display: 'National Pharmacy Chain · Store #4821 · Fresno, CA'
   },
   {
-    id: 'palm-beach',
-    orgName: 'Palm Beach County Medical',
+    id: 'healthcare-demo',
+    orgName: 'Regional Medical Center',
     industry: 'healthcare',
     state: 'Florida',
-    locationId: 'PBCM-Main',
+    locationId: 'Main Campus',
     city: 'West Palm Beach',
-    display: 'Palm Beach County Medical · West Palm Beach, FL'
+    display: 'Regional Medical Center · West Palm Beach, FL'
   },
   {
-    id: 'tesla',
-    orgName: 'Tesla Gigafactory',
+    id: 'manufacturing-demo',
+    orgName: 'Advanced Manufacturing Facility',
     industry: 'manufacturing',
     state: 'Texas',
-    locationId: 'Gigafactory-ATX',
+    locationId: 'Plant ATX',
     city: 'Austin',
-    display: 'Tesla Gigafactory · Austin, TX'
+    display: 'Advanced Manufacturing Facility · Austin, TX'
   },
   {
-    id: 'four-seasons',
-    orgName: 'Four Seasons',
+    id: 'hospitality-demo',
+    orgName: 'Luxury Hotel & Resort',
     industry: 'hospitality',
     state: 'Nevada',
-    locationId: 'FS-LV',
+    locationId: 'LV Property',
     city: 'Las Vegas',
-    display: 'Four Seasons · Las Vegas, NV'
+    display: 'Luxury Hotel & Resort · Las Vegas, NV'
   },
   {
-    id: 'chg',
-    orgName: 'CHG Healthcare',
+    id: 'corporate-demo',
+    orgName: 'Healthcare Staffing Corp',
     industry: 'corporate',
     state: 'Utah',
     locationId: 'Corporate HR',
     city: 'Midvale',
-    display: 'CHG Healthcare · Corporate HR · Midvale, UT'
+    display: 'Healthcare Staffing Corp · Corporate HR · Midvale, UT'
   }
 ];

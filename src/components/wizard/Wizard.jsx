@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ContextPage from './ContextPage.jsx';
 import GuidancePage from './GuidancePage.jsx';
 import NextStepsPage from './NextStepsPage.jsx';
@@ -12,42 +12,64 @@ const STEPS = [
   { num: 4, key: 'document', title: 'Document' }
 ];
 
-/**
- * Wizard — 4-page flow for the primary interaction.
- * The user advances via "Next" buttons. Completed pages are re-navigable
- * via the progress indicator. Page 4 (Document) can only be reached via
- * pages 1 → 2 → 3.
- */
 export default function Wizard({
   interaction,
   provisioning,
   employeeId,
+  events = [],
+  session,
+  followups = [],
   onClarificationPick,
   onEscalateHr,
   onCopyGuidance,
   onCopyRecord,
   onDownloadRecord,
   onSendToHr,
-  onNewSituation
+  onNewSituation,
+  onStepCompleted,
+  onDocumentGenerated
 }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [maxReached, setMaxReached] = useState(1);
   const [guidanceStreamed, setGuidanceStreamed] = useState(false);
   const [checkedSteps, setCheckedSteps] = useState([]);
+  const [stepCompletedAt, setStepCompletedAt] = useState({}); // index -> ISO timestamp
   const [recordId] = useState(() => randomId('REC', 6));
 
   const response = interaction.response;
-  if (!response) return null;
 
   const complianceRecord = useMemo(
-    () => buildComplianceRecord({ interaction, provisioning, employeeId, recordId }),
-    [interaction, provisioning, employeeId, recordId]
+    () => buildComplianceRecord({
+      interaction,
+      provisioning,
+      employeeId,
+      recordId,
+      events,
+      followups,
+      checkedSteps,
+      stepCompletedAt,
+      session
+    }),
+    [interaction, provisioning, employeeId, recordId, events, followups, checkedSteps, stepCompletedAt, session]
   );
 
-  // Step 2 is "ready to advance" once the stream completes.
+  // Emit DOCUMENT_GENERATED the first time we land on page 4
+  useEffect(() => {
+    if (currentStep === 4 && onDocumentGenerated) {
+      onDocumentGenerated(complianceRecord);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
+
+  if (!response) return null;
+
   const canAdvanceFromStep = (step) => {
     if (step === 2) return guidanceStreamed;
     return true;
+  };
+
+  const scrollToTop = () => {
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 10);
   };
 
   const advance = () => {
@@ -70,15 +92,25 @@ export default function Wizard({
     }
   };
 
-  const scrollToTop = () => {
-    // Smooth scroll to below the navbar so the progress bar is visible
-    setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 10);
-  };
-
   const toggleStep = (i) => {
-    setCheckedSteps(c => c.includes(i) ? c.filter(x => x !== i) : [...c, i]);
+    setCheckedSteps(c => {
+      const isNowChecked = !c.includes(i);
+      if (isNowChecked) {
+        const now = new Date().toISOString();
+        setStepCompletedAt(m => ({ ...m, [i]: now }));
+        if (onStepCompleted && response.next_steps && response.next_steps[i]) {
+          onStepCompleted(i, response.next_steps[i]);
+        }
+        return [...c, i];
+      }
+      // Uncheck: also clear the completed-at stamp
+      setStepCompletedAt(m => {
+        const next = { ...m };
+        delete next[i];
+        return next;
+      });
+      return c.filter(x => x !== i);
+    });
   };
 
   const handleStreamDone = () => setGuidanceStreamed(true);
@@ -119,7 +151,7 @@ export default function Wizard({
             record={complianceRecord}
             onDownload={() => onDownloadRecord(complianceRecord)}
             onCopy={() => onCopyRecord(complianceRecord)}
-            onSendToHr={onSendToHr}
+            onSendToHr={() => onSendToHr(complianceRecord)}
             onNewSituation={onNewSituation}
           />
         );

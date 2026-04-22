@@ -32,7 +32,7 @@ export async function askApi({
   const stateHint = context.state || '';
   if (!API_URL) {
     return {
-      data: applyStateFallback(findMockResponse(userInput), stateHint),
+      data: applyStateFallback(findMockResponse(userInput, { state: context.state, industry: context.industry }), stateHint),
       mock: true
     };
   }
@@ -61,7 +61,7 @@ export async function askApi({
     return { data: applyStateFallback(data, stateHint), mock: false };
   } catch (err) {
     return {
-      data: applyStateFallback(findMockResponse(userInput), stateHint),
+      data: applyStateFallback(findMockResponse(userInput, { state: context.state, industry: context.industry }), stateHint),
       mock: true
     };
   }
